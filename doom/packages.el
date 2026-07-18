@@ -55,8 +55,12 @@
 ;; org-drill for note cards
 (package! org-drill)
 
-;; pomodoro
-(package! org-pomodoro)
-
 ;; julia
 (package! julia-mode)
+
+;; quarto
+(package! quarto-mode)
+
+;; org to ipynb
+(package! ox-ipynb
+  :recipe (:host github :repo "jkitchin/ox-ipynb"))
