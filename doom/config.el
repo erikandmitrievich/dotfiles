@@ -1,205 +1,227 @@
 ;;; $DOOMDIR/config.el -*- lexical-binding: t; -*-
+;;
+;; No 'doom sync' needed after editing this file (only after init.el/packages.el).
 
-;; Place your private configuration here! Remember, you do not need to run 'doom
-;; sync' after modifying this file—but you will after adding new modules/packages.
+(require 'cl-lib)
+(require 'subr-x)
 
-;; Some functionality uses this to identify you, e.g. GPG configuration, email
-;; clients, file templates and snippets. It is optional.
-;; (setq user-full-name "John Doe"
-;;       user-mail-address "john@doe.com")
+;;; ------------------------------------------------------------------
+;;; identity
+;;; ------------------------------------------------------------------
 
-;; Doom exposes five (optional) variables for controlling fonts in Doom:
-;; - `doom-font' -- the primary font to use
-;; - `doom-variable-pitch-font' -- a non-monospace font (where applicable)
-;; - `doom-big-font' -- used for `doom-big-font-mode'; use this for presentations
-;; - `doom-symbol-font' -- for symbols
-;; - `doom-serif-font' -- for the `fixed-pitch-serif' face
-;; Example:
-;; (setq doom-font (font-spec :family "Fira Code" :size 12 :weight 'semi-light)
-;;       doom-variable-pitch-font (font-spec :family "Fira Sans" :size 13))
+(setq user-full-name    "Erik An"
+      user-mail-address "obluda2173@gmail.com")
 
-;; There are two ways to load a theme. This is the default:
-(setq doom-theme 'doom-one)
+;;; ------------------------------------------------------------------
+;;; ui
+;;; ------------------------------------------------------------------
 
-;; This determines the style of line numbers in effect.
-;; If set to `nil', line numbers are disabled.
-;; For relative line numbers, set this to `relative'.
-(setq display-line-numbers-type t)
+(setq doom-theme 'doom-one
+      display-line-numbers-type t)
 
-;; If you use `org' and don't want your org files in the default location below,
-;; change `org-directory'. It must be set before org loads!
+;;; ------------------------------------------------------------------
+;;; paths
+;;; ------------------------------------------------------------------
+
 (setq org-directory "~/org/")
 
-;; Here are some additional functions/macros that will help you configure Doom.
-;; - `load!' for loading external *.el files relative to this one
-;; - `use-package!' for configuring packages
-;; - `after!' for running code after a package has loaded
-;; - `add-load-path!' for adding directories to the `load-path'
-;; - `map!' for binding new keys
-;; Use `C-h v` or `C-h f` to get documentation on any variable or function.
+(defvar erik/notes-directory
+  (expand-file-name "~/personal/mfds/01_coursework/02_semester/")
+  "Root of the current semester's coursework.
+Only org files under this tree get automatic headers and lastmod stamps.")
 
-;; -------------------------------------------------------------------
-;; BEGIN: JavaScript / TypeScript / Node.js REPL Setup
-;; -------------------------------------------------------------------
-;; (Requires you have enabled `:lang javascript +lsp +tree-sitter`
-;;  and `:lang typescript +lsp` in your init.el, and installed:
-;;    npm install -g typescript-language-server typescript eslint)
+(defvar erik/org-ref-directories
+  (mapcar (lambda (d) (expand-file-name d erik/notes-directory))
+          '("01_analysis/01_material"
+            "02_linear_algebra/01_material"))
+  "Directories globbed for .org chapter files when inserting a reference.")
 
-;; 1. LSP performance tweaks
+;;; ------------------------------------------------------------------
+;;; lsp / js / ts
+;;; ------------------------------------------------------------------
+;; Needs: npm install -g typescript typescript-language-server eslint
+;; +lsp and tree-sitter are wired by the modules; no manual hooks needed.
+
 (after! lsp-mode
-  ;; Don’t watch node_modules (speeds up file watching)
   (add-to-list 'lsp-file-watch-ignored-directories "node_modules")
   (setq lsp-idle-delay 0.5
         lsp-log-io    nil))
 
-;; 2. JS2 mode + LSP + Tree-sitter
 (after! js2-mode
-  (setq js-indent-level 2)
-  (add-hook 'js2-mode-hook     #'lsp)
-  (add-hook 'js2-mode-hook     #'tree-sitter-hl-mode))
+  (setq js-indent-level 2))
 
-;; 3. TypeScript mode + LSP + Tree-sitter
 (after! typescript-mode
-  (setq typescript-indent-level 2)
-  (add-hook 'typescript-mode-hook #'lsp)
-  (add-hook 'typescript-mode-hook #'tree-sitter-hl-mode))
+  (setq typescript-indent-level 2))
 
-;; 4. Node.js REPL integration
-(use-package! nodejs-repl
-  :after js2-mode
-  :config
-  (defun my-nodejs-repl-launch ()
-    "Run Node.js REPL in the project root."
-    (interactive)
-    (let ((default-directory (projectile-project-root)))
-      (run-nodejs)))
-  (map! :map js2-mode-map
-        :localleader
-        "r" #'my-nodejs-repl-launch))
+;;; ------------------------------------------------------------------
+;;; gptel
+;;; ------------------------------------------------------------------
 
-;; 5. Company completion tweaks
-(after! company
-  (setq company-minimum-prefix-length 1
-        company-idle-delay          0.2))
-
-;; 6. Flycheck: ESLint/TSLint
-(after! flycheck
-  (flycheck-add-mode 'javascript-eslint 'js2-mode)
-  (flycheck-add-mode 'typescript-tslint 'typescript-mode))
-;; -------------------------------------------------------------------
-;; END: JavaScript / TypeScript / Node.js REPL Setup
-;; --------------------------
-
-;; You can add further customizations below...
-
-(use-package! org-modern
-  :hook (org-mode . org-modern-mode))
-
+(defvar erik/gptel-ollama nil
+  "Ollama backend, kept separate from the default one.")
 
 (use-package! gptel
   :config
   (setq gptel-default-mode 'org-mode)
 
-  ;; 1. OVERWRITE the default "ChatGPT" backend
-  ;; By naming this "ChatGPT" (instead of "OpenAI"), we replace the built-in
-  ;; backend that has all the clutter.
+  ;; Naming this "ChatGPT" overwrites Doom/gptel's cluttered built-in backend.
   (setq gptel-backend
         (gptel-make-openai "ChatGPT"
           :key gptel-api-key
           :stream t
-          :models '(gpt-5
-                    gpt-5-mini
-                    gpt-5-nano
-                    o3
-                    o4-mini)))
+          :models '(gpt-5 gpt-5-mini gpt-5-nano o3 o4-mini)))
 
-  ;; 2. Define Ollama (Optional, keeps it separate)
-  (setq my/gptel-ollama
+  (setq erik/gptel-ollama
         (gptel-make-ollama "Ollama"
           :host "localhost:11434"
           :stream t
           :models '(mistral:latest)))
 
-  ;; 3. Ensure we start with the clean ChatGPT backend
   (setq gptel-model 'gpt-5-mini))
 
+;;; ------------------------------------------------------------------
+;;; latex / cdlatex
+;;; ------------------------------------------------------------------
 
 (after! cdlatex
-  ;; 1. Remove the existing default definition for 'b' (which is just \beta)
-  ;;    This prevents any conflict or merging issues.
+  ;; This is the *user* list; it is consed ahead of
+  ;; `cdlatex-math-symbol-alist-default', so these win over the defaults.
   (setq cdlatex-math-symbol-alist
-        (assq-delete-all ?b cdlatex-math-symbol-alist))
-
-  ;; 2. Add your custom definition directly to the main list
-  ;;    Structure: (?char ("level1" "level2" "level3"))
-  (add-to-list 'cdlatex-math-symbol-alist
-               '(?b ("\\beta" "\\boxplus" "\\boxtimes")))
-
-  (add-to-list 'cdlatex-math-symbol-alist
-               '(?a ("\\alpha" "\\begin{align*}\n\n\\end{align*}")))
-
-  (add-to-list 'cdlatex-math-symbol-alist
-               '(?i ("\\in" "\\implies")))
-
-  (add-to-list 'cdlatex-math-symbol-alist
-               '(?R ("\\mathbb{R}")))
-
-  (add-to-list 'cdlatex-math-symbol-alist
-               '(?m ("\\mu" "\\mathbb{}")))
-
-  (add-to-list 'cdlatex-math-symbol-alist
-               '(?t ("\\tau" "\\text{}")))
-
-  ;; 3. Force cdlatex to reset its internal cache immediately
+        '((?b ("\\beta" "\\boxplus" "\\boxtimes"))
+          (?a ("\\alpha" "\\begin{align*}\n\n\\end{align*}"))
+          (?i ("\\in" "\\implies"))
+          (?R ("\\mathbb{R}"))
+          (?m ("\\mu" "\\mathbb{}"))
+          (?t ("\\tau" "\\text{}"))))
+  ;; force the combined cache to rebuild
   (setq cdlatex-math-symbol-alist-comb nil))
 
-;; quarto
+;;; ------------------------------------------------------------------
+;;; quarto / pdf / pass
+;;; ------------------------------------------------------------------
+
 (use-package! quarto-mode
   :mode (("\\.Rmd\\'" . poly-quarto-mode)
          ("\\.qmd\\'" . poly-quarto-mode)))
 
-;; pdf
 (after! pdf-tools
+  (setq pdf-view-resize-factor 1.05)    ; default 1.25
   (add-hook 'pdf-view-mode-hook
-    (lambda ()
-      (setq pdf-view-midnight-colors
-            (cons (face-foreground 'default) (face-background 'default)))
-      (pdf-view-midnight-minor-mode 1)))
+            (lambda ()
+              (setq pdf-view-midnight-colors
+                    (cons (face-foreground 'default)
+                          (face-background 'default)))
+              (pdf-view-midnight-minor-mode 1)))
   (map! :map pdf-view-mode-map
         :n "i" #'pdf-view-midnight-minor-mode))
-(after! pdf-view
-  (setq pdf-view-resize-factor 1.05))  ;; default is 1.25
 
-;; pass - password generation length
 (setq password-store-password-length 24)
 
-;; org to ipynb
+;;; ------------------------------------------------------------------
+;;; org
+;;; ------------------------------------------------------------------
+
+(use-package! org-modern
+  :hook (org-mode . org-modern-mode))
+
 (use-package! ox-ipynb
   :after ox)
 
-;; TODO for definitions
 (after! org
   (setq org-todo-keywords
-        '((sequence "TODO(t)" "WAIT(w)" "|" "DONE(d)")))
-  (setq org-todo-keyword-faces
+        '((sequence "TODO(t)" "WAIT(w)" "|" "DONE(d)"))
+        org-todo-keyword-faces
         '(("WAIT" . (:foreground "#d79921" :weight bold)))))
 
+;; ox-ipynb emits quote blocks without a trailing blank line, which glues the
+;; next cell to them.
+(with-eval-after-load 'ox-ipynb
+  (define-advice ox-ipynb-export-to-buffer-data
+      (:around (orig &rest args) ox-ipynb-quote-trailing-newline)
+    (cl-letf* ((qb (symbol-function 'org-md-quote-block))
+               ((symbol-function 'org-md-quote-block)
+                (lambda (&rest a) (concat (apply qb a) "\n\n"))))
+      (apply orig args))))
 
-;;; --- lecture-note cross-reference tooling --------------------------
-(require 'cl-lib)
-(require 'subr-x)
+;;; ------------------------------------------------------------------
+;;; org file headers (scoped to `erik/notes-directory')
+;;; ------------------------------------------------------------------
+
+(defun erik/org--managed-file-p ()
+  "Non-nil if the current buffer is an org file under `erik/notes-directory'."
+  (when-let ((f (buffer-file-name)))
+    (file-in-directory-p f erik/notes-directory)))
+
+(defun erik/org--title-from-filename ()
+  "A pretty title derived from the buffer's filename."
+  (let* ((base  (file-name-base (or (buffer-file-name) (buffer-name))))
+         (parts (split-string base "[-_ ]+")))
+    (mapconcat #'capitalize parts " ")))
+
+(defun erik/org--header-string ()
+  (concat
+   (format "#+title: %s\n" (erik/org--title-from-filename))
+   (format "#+author: %s\n" user-full-name)
+   (format "#+email: %s\n" user-mail-address)
+   (format "#+date: %s\n" (format-time-string "<%Y-%m-%d>"))
+   (format "#+lastmod: %s\n" (format-time-string "<%Y-%m-%d %H:%M>"))
+   ;; paragraph spacing
+   "#+latex: \\newpage\n"
+   "#+latex_header: \\setlength{\\parindent}{0pt}\n"
+   "#+latex_header: \\setlength{\\parskip}{1em}\n"
+   ;; math
+   "#+latex_header: \\usepackage{amsmath}\n"
+   "#+latex_header: \\usepackage{amssymb}\n"
+   "#+latex_header: \\usepackage{mathtools}\n"
+   "#+latex_header: \\usepackage{amsthm}\n"
+   ;; geometry
+   "#+latex_header: \\usepackage[margin=1in]{geometry}\n"
+   ;; view
+   "#+options: num:t tags:nil\n"
+   "#+property: header-args :eval never-export\n"
+   "#+startup: overview latexpreview inlineimages\n"
+   "#+columns: %50ITEM(Item) %8LECTURE_REF(Lecture) %34CUSTOM_ID(ID)\n\n"))
+
+(defun erik/org-insert-header-if-missing ()
+  "Insert the standard header into a managed org file that has no keywords yet.
+Checks for #+title as well, so a titled file never gets a duplicate."
+  (when (and (derived-mode-p 'org-mode)
+             (erik/org--managed-file-p))
+    (save-excursion
+      (goto-char (point-min))
+      (let ((case-fold-search t))
+        (unless (re-search-forward "^#\\+\\(title\\|author\\|email\\|date\\):" 400 t)
+          (insert (erik/org--header-string)))))))
+
+(defun erik/org-update-lastmod-on-save ()
+  "Refresh #+lastmod in managed org files."
+  (when (and (derived-mode-p 'org-mode)
+             (erik/org--managed-file-p))
+    (save-excursion
+      (goto-char (point-min))
+      (let ((ts (format-time-string "<%Y-%m-%d %H:%M>"))
+            (case-fold-search t))
+        (if (re-search-forward "^#\\+lastmod:.*$" nil t)
+            (replace-match (concat "#+lastmod: " ts))
+          (goto-char (point-min))
+          (when (re-search-forward
+                 "^#\\+\\(title\\|author\\|email\\|date\\|options\\|startup\\):.*$" nil t)
+            (beginning-of-line)
+            (while (and (not (eobp)) (looking-at "^#\\+")) (forward-line 1)))
+          (insert (concat "#+lastmod: " ts "\n")))))))
+
+(add-hook 'org-mode-hook    #'erik/org-insert-header-if-missing)
+(add-hook 'before-save-hook #'erik/org-update-lastmod-on-save)
+
+;;; ------------------------------------------------------------------
+;;; lecture-note cross-reference tooling
+;;; ------------------------------------------------------------------
 
 (defvar erik/org-kind-prefix
   '(("Theorem" . "thm") ("Lemma" . "lem") ("Definition" . "def")
     ("Proposition" . "prop") ("Corollary" . "cor"))
   "Slug prefix for each item kind.")
 
-(defvar erik/org-ref-directories
-  '("/Users/ziro2173/personal/mfds/01_coursework/02_semester/01_analysis/01_material"
-    "/Users/ziro2173/personal/mfds/01_coursework/02_semester/02_linear_algebra/01_material")
-  "Directories globbed for .org chapter files when inserting a reference.")
-
-;;; --- helpers -------------------------------------------------------
 (defun erik/org-slugify (s)
   (string-trim (replace-regexp-in-string "[^a-z0-9]+" "-" (downcase s))
                "-+" "-+"))
@@ -253,7 +275,6 @@ Returns the hash table, or the symbol `missing' if FILE is unreadable."
                   (directory-files d t "\\`[^.#].*\\.org\\'")))
            erik/org-ref-directories)))
 
-;;; --- commands ------------------------------------------------------
 (defun erik/org-new-item (kind name slug ref)
   "Insert a lecture-item heading with CUSTOM_ID and LECTURE_REF.
 SLUG defaults to a mechanical slug of NAME; edit it to a concise form."
@@ -336,17 +357,8 @@ its target."
                  (string-join (delete-dups (nreverse warn)) "; "))
       (message "Refreshed %d link(s); no warnings." n))))
 
-;;; --- keybindings ---------------------------------------------------
 (map! :after org :map org-mode-map :localleader
       "i n" #'erik/org-new-item
       "i r" #'erik/org-insert-ref
       "i z" #'erik/org-refresh-ref-links)
 
-;; ox-ipynb
-(with-eval-after-load 'ox-ipynb
-  (define-advice ox-ipynb-export-to-buffer-data
-      (:around (orig &rest args) ox-ipynb-quote-trailing-newline)
-    (cl-letf* ((qb (symbol-function 'org-md-quote-block))
-               ((symbol-function 'org-md-quote-block)
-                (lambda (&rest a) (concat (apply qb a) "\n\n"))))
-      (apply orig args))))

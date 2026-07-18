@@ -3,3 +3,6 @@ doom/.local/
 doom/eln-cache/
 .DS_Store
 *.elc
+*~
+\#*\#
+.\#*
