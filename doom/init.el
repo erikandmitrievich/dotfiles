@@ -57,6 +57,7 @@
        (pass +auth)
        pdf
        tree-sitter
+       llm
 
        :os
        (:if (featurep :system 'macos) macos)

@@ -19,4 +19,5 @@
 ;; quarto
 (package! quarto-mode)
 
-;; NOTE removed (package! julia-mode) -- ':lang julia' already installs it.
+;; just
+(package! just-mode)

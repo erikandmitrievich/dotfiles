@@ -26,7 +26,7 @@
 (setq org-directory "~/org/")
 
 (defvar erik/notes-directory
-  (expand-file-name "~/personal/mfds/01_coursework/02_semester/")
+  (expand-file-name "~/personal/mfds/")
   "Root of the current semester's coursework.
 Only org files under this tree get automatic headers and lastmod stamps.")
 
@@ -56,6 +56,11 @@ Only org files under this tree get automatic headers and lastmod stamps.")
 ;;; ------------------------------------------------------------------
 ;;; gptel
 ;;; ------------------------------------------------------------------
+;; Keys live in `pass'; the lambdas are evaluated per request, so no GPG
+;; prompt at startup and no auth-source host/user matching to get wrong.
+
+(defvar erik/gptel-claude nil
+  "Anthropic backend.")
 
 (defvar erik/gptel-ollama nil
   "Ollama backend, kept separate from the default one.")
@@ -71,13 +76,38 @@ Only org files under this tree get automatic headers and lastmod stamps.")
           :stream t
           :models '(gpt-5 gpt-5-mini gpt-5-nano o3 o4-mini)))
 
+  (setq erik/gptel-claude
+        (gptel-make-anthropic "Claude"
+          :key (lambda () (password-store-get "anthropic/api-key-gptel"))
+          :stream t
+          :models '(claude-opus-5 claude-sonnet-5 claude-haiku-4-5-20251001)))
+
   (setq erik/gptel-ollama
         (gptel-make-ollama "Ollama"
           :host "localhost:11434"
           :stream t
           :models '(mistral:latest)))
 
-  (setq gptel-model 'gpt-5-mini))
+  ;; Claude 5-generation models reject non-default sampling params with a 400.
+  (setq gptel-temperature nil)
+
+  (setq gptel-backend erik/gptel-claude
+        gptel-model   'claude-sonnet-5))
+
+(map! :leader
+      (:prefix ("l" . "llm")
+       "l" #'gptel
+       "s" #'gptel-send
+       "m" #'gptel-menu
+       "r" #'gptel-rewrite
+       "a" #'gptel-add
+       "f" #'gptel-add-file))
+
+(after! gptel
+  (setq gptel-default-mode 'org-mode
+        gptel-org-branching-context t)
+  (setf (alist-get 'org-mode gptel-prompt-prefix-alist) "@user\n")
+  (setf (alist-get 'org-mode gptel-response-prefix-alist) "@assistant\n"))
 
 ;;; ------------------------------------------------------------------
 ;;; latex / cdlatex
@@ -101,6 +131,9 @@ Only org files under this tree get automatic headers and lastmod stamps.")
 ;;; ------------------------------------------------------------------
 
 (use-package! quarto-mode
+
+
+
   :mode (("\\.Rmd\\'" . poly-quarto-mode)
          ("\\.qmd\\'" . poly-quarto-mode)))
 
