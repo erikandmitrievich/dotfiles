@@ -13,7 +13,8 @@
   :recipe (:host github :repo "jkitchin/ox-ipynb"))
 
 ;; ai
-(package! gptel)                        ; multi-backend LLM client
+(unpin! gptel)
+;; (package! gptel)                        ; multi-backend LLM client
                                         ; (Doom's ':tools llm' also ships this)
 
 ;; quarto

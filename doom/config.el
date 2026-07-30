@@ -109,6 +109,18 @@ Only org files under this tree get automatic headers and lastmod stamps.")
   (setf (alist-get 'org-mode gptel-prompt-prefix-alist) "@user\n")
   (setf (alist-get 'org-mode gptel-response-prefix-alist) "@assistant\n"))
 
+(after! gptel
+  (setq gptel-expert-commands t))
+
+(after! gptel
+  (gptel-make-preset 'julia
+    :description "Julia, minimal, no over-engineering"
+    :backend "Claude"
+    :model 'claude-sonnet-4-5-20250929
+    :system "Idiomatic Julia. Minimal solution. No defensive boilerplate, no comments restating the code."
+    :temperature 0.2
+    :use-context 'user))
+
 ;;; ------------------------------------------------------------------
 ;;; latex / cdlatex
 ;;; ------------------------------------------------------------------
