@@ -52,7 +52,7 @@
        ein
        (eval +overlay)
        lookup
-       lsp
+       (lsp +eglot)
        magit
        (pass +auth)
        pdf
