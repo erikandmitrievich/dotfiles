@@ -30,11 +30,14 @@
   "Root of the current semester's coursework.
 Only org files under this tree get automatic headers and lastmod stamps.")
 
-(defvar erik/org-ref-directories
-  (mapcar (lambda (d) (expand-file-name d erik/notes-directory))
-          '("01_analysis/01_material"
-            "02_linear_algebra/01_material"))
-  "Directories globbed for .org chapter files when inserting a reference.")
+(defun erik/org-ref-directories ()
+  "Material directories under `erik/notes-directory', per STRUCTURE.org.
+Recomputed per call so a rename or a new course needs no config edit."
+  (seq-filter #'file-directory-p
+              (file-expand-wildcards
+               (expand-file-name "01_coursework/*_semester/*/01_material"
+                                 erik/notes-directory)
+               t)))
 
 ;;; ------------------------------------------------------------------
 ;;; lsp / js / ts
@@ -262,6 +265,8 @@ Checks for #+title as well, so a titled file never gets a duplicate."
 ;;; lecture-note cross-reference tooling
 ;;; ------------------------------------------------------------------
 
+;;; ---- item extraction ----------------------------------------------
+
 (defvar erik/org-kind-prefix
   '(("Theorem" . "thm") ("Lemma" . "lem") ("Definition" . "def")
     ("Proposition" . "prop") ("Corollary" . "cor"))
@@ -271,8 +276,23 @@ Checks for #+title as well, so a titled file never gets a duplicate."
   (string-trim (replace-regexp-in-string "[^a-z0-9]+" "-" (downcase s))
                "-+" "-+"))
 
+(defun erik/org--clean-heading (h)
+  "Strip TODO keyword, priority cookie and tags from raw heading text H."
+  (let ((s h))
+    (setq s (replace-regexp-in-string "\\`\\(?:TODO\\|WAIT\\|DONE\\)[ \t]+" "" s))
+    (setq s (replace-regexp-in-string "\\`\\[#[A-C]\\][ \t]+" "" s))
+    (setq s (replace-regexp-in-string "[ \t]+:[[:alnum:]_@#%:]+:[ \t]*\\'" "" s))
+    (string-trim s)))
+
+(defun erik/org--split-heading (head)
+  "Return (KIND . NAME) for a cleaned heading."
+  (let ((parts (split-string head ":")))
+    (cons (string-trim (car parts))
+          (string-trim (string-join (cdr parts) ":")))))
+
 (defun erik/org--items-in-buffer ()
-  "List of (CID KIND REF NAME) for every CUSTOM_ID item in this buffer."
+  "List of (CID KIND REF NAME) for every CUSTOM_ID item in this buffer.
+Org-native; used for the current, possibly unsaved, buffer."
   (let (items)
     (org-with-wide-buffer
      (org-map-entries
@@ -280,26 +300,77 @@ Checks for #+title as well, so a titled file never gets a duplicate."
         (let ((cid  (org-entry-get nil "CUSTOM_ID"))
               (head (org-get-heading t t t t)))
           (when (and cid head)
-            (let* ((parts (split-string head ":"))
-                   (kind  (string-trim (car parts)))
-                   (name  (string-trim (string-join (cdr parts) ":"))))
-              (push (list cid kind
+            (let ((kn (erik/org--split-heading head)))
+              (push (list cid (car kn)
                           (or (org-entry-get nil "LECTURE_REF") "")
-                          name)
+                          (cdr kn))
                     items)))))))
     (nreverse items)))
 
-(defun erik/org--item-table ()
-  "Hash CUSTOM_ID -> \"<Kind> <LECTURE_REF>\" for items that have a ref."
+(defun erik/org--items-from-file (file)
+  "Items in FILE, parsed by regex without activating `org-mode'.
+Roughly two orders of magnitude cheaper than `find-file-noselect',
+which would honour #+startup: latexpreview and render every fragment."
+  (let (items)
+    (with-temp-buffer
+      (insert-file-contents file)
+      (goto-char (point-min))
+      (while (re-search-forward "^\\*+[ \t]+\\(.*\\)$" nil t)
+        (let* ((kn  (erik/org--split-heading
+                     (erik/org--clean-heading (match-string 1))))
+               (end (save-excursion
+                      (if (re-search-forward "^\\*+[ \t]" nil t)
+                          (match-beginning 0)
+                        (point-max))))
+               (cid (save-excursion
+                      (when (re-search-forward
+                             "^[ \t]*:CUSTOM_ID:[ \t]*\\(.+?\\)[ \t]*$" end t)
+                        (match-string 1))))
+               (ref (save-excursion
+                      (if (re-search-forward
+                           "^[ \t]*:LECTURE_REF:[ \t]*\\(.*?\\)[ \t]*$" end t)
+                          (match-string 1) ""))))
+          (when cid (push (list cid (car kn) ref (cdr kn)) items)))))
+    (nreverse items)))
+
+(defvar erik/org--ref-cache (make-hash-table :test 'equal)
+  "FILE -> (MTIME . ITEMS).")
+
+(defun erik/org--items-cached (file)
+  "Items in FILE, memoised on modification time.
+A visiting buffer with unsaved changes bypasses the cache."
+  (let ((buf (find-buffer-visiting file)))
+    (if (and buf (buffer-modified-p buf))
+        (with-current-buffer buf (erik/org--items-in-buffer))
+      (let ((mtime (file-attribute-modification-time (file-attributes file)))
+            (hit   (gethash file erik/org--ref-cache)))
+        (if (and hit (equal (car hit) mtime))
+            (cdr hit)
+          (let ((items (erik/org--items-from-file file)))
+            (puthash file (cons mtime items) erik/org--ref-cache)
+            items))))))
+
+(defun erik/org-ref-cache-clear ()
+  "Drop the reference cache."
+  (interactive)
+  (clrhash erik/org--ref-cache)
+  (message "ref cache cleared"))
+
+;;; ---- tables (used by refresh) --------------------------------------
+
+(defun erik/org--table-from-items (items)
   (let ((table (make-hash-table :test 'equal)))
-    (dolist (it (erik/org--items-in-buffer) table)
+    (dolist (it items table)
       (cl-destructuring-bind (cid kind ref _name) it
-        (unless (string= ref "")
-          (puthash cid (format "%s %s" kind ref) table))))))
+        (puthash cid (if (string= ref "") kind (format "%s %s" kind ref))
+                 table)))))
+
+(defun erik/org--item-table ()
+  (erik/org--table-from-items (erik/org--items-in-buffer)))
 
 (defun erik/org--file-table (file cache)
   "Item table for FILE (nil = current buffer), memoised in CACHE.
-Returns the hash table, or the symbol `missing' if FILE is unreadable."
+Returns the hash table, or `missing' if FILE is unreadable."
   (let ((key (or file :current)))
     (or (gethash key cache)
         (puthash key
@@ -307,22 +378,26 @@ Returns the hash table, or the symbol `missing' if FILE is unreadable."
                      (erik/org--item-table)
                    (let ((path (expand-file-name file)))
                      (if (file-readable-p path)
-                         (with-current-buffer (find-file-noselect path)
-                           (erik/org--item-table))
+                         (erik/org--table-from-items (erik/org--items-cached path))
                        'missing)))
                  cache))))
 
+;;; ---- insertion -----------------------------------------------------
+
 (defun erik/org--all-chapter-files ()
-  "Every .org chapter file under `erik/org-ref-directories'."
   (seq-uniq
-   (mapcan (lambda (d)
-             (and (file-directory-p d)
-                  (directory-files d t "\\`[^.#].*\\.org\\'")))
-           erik/org-ref-directories)))
+   (mapcan (lambda (d) (directory-files d t "\\`[^.#].*\\.org\\'"))
+           (erik/org-ref-directories))))
+
+(defun erik/org--course-label (file)
+  "COURSE/BASENAME for FILE, e.g. 01_analysis_ii/03_reihen.org."
+  (let ((dir (directory-file-name (file-name-directory file))))  ; …/01_material
+    (format "%s/%s"
+            (file-name-nondirectory (directory-file-name (file-name-directory dir)))
+            (file-name-nondirectory file))))
 
 (defun erik/org-new-item (kind name slug ref)
-  "Insert a lecture-item heading with CUSTOM_ID and LECTURE_REF.
-SLUG defaults to a mechanical slug of NAME; edit it to a concise form."
+  "Insert a lecture-item heading with CUSTOM_ID and LECTURE_REF."
   (interactive
    (let* ((kind (completing-read "Kind: " erik/org-kind-prefix))
           (name (read-string "Name: ")))
@@ -334,9 +409,7 @@ SLUG defaults to a mechanical slug of NAME; edit it to a concise form."
                   slug ref)))
 
 (defun erik/org-insert-ref ()
-  "Pick a lecture item from any configured chapter file and insert a link.
-A target in the current file yields [[#cid][...]]; a target elsewhere
-yields [[file:RELPATH::#cid][...]], the path relative to this file."
+  "Pick a lecture item from any material directory and insert a link."
   (interactive)
   (unless buffer-file-name
     (user-error "Run this from a file-visiting buffer"))
@@ -344,18 +417,18 @@ yields [[file:RELPATH::#cid][...]], the path relative to this file."
          (heredir (file-name-directory here))
          (rows '()))
     (dolist (f (erik/org--all-chapter-files))
-      (let ((ftrue (file-truename f)))
-        (with-current-buffer (find-file-noselect f)
-          (dolist (it (erik/org--items-in-buffer))
-            (cl-destructuring-bind (cid kind ref name) it
-              (push (list (format "%-26s %-11s %-8s %s"
-                                  (file-name-nondirectory f)
-                                  kind (if (string= ref "") "—" ref) name)
-                          ftrue cid kind ref)
-                    rows))))))
+      (let ((ftrue (file-truename f))
+            (label (erik/org--course-label f)))
+        (dolist (it (erik/org--items-cached f))
+          (cl-destructuring-bind (cid kind ref name) it
+            (push (list (format "%-40s %-11s %-8s %s"
+                                label kind (if (string= ref "") "—" ref) name)
+                        ftrue cid kind ref)
+                  rows)))))
     (setq rows (nreverse rows))
     (unless rows
-      (user-error "No items found under erik/org-ref-directories"))
+      (user-error "No items found under %s"
+                  (string-join (erik/org-ref-directories) ", ")))
     (let* ((choice (completing-read "Reference: " rows nil t))
            (r (assoc choice rows)))
       (when r
@@ -405,5 +478,5 @@ its target."
 (map! :after org :map org-mode-map :localleader
       "i n" #'erik/org-new-item
       "i r" #'erik/org-insert-ref
-      "i z" #'erik/org-refresh-ref-links)
-
+      "i z" #'erik/org-refresh-ref-links
+      "i c" #'erik/org-ref-cache-clear)
