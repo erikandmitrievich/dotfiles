@@ -85,7 +85,7 @@
 
        :app
        ;;calendar
-       ;;(rss +org)
+       (rss +org)
 
        :config
        (default +bindings +smartparens))

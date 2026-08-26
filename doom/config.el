@@ -192,13 +192,41 @@ Recomputed per call so a rename or a new course needs no config edit."
       (apply orig args))))
 
 ;;; ------------------------------------------------------------------
-;;; org file headers (scoped to `erik/notes-directory')
+;;; org file headers
 ;;; ------------------------------------------------------------------
+;; Two profiles:
+;;   full  — files under `erik/notes-directory': LaTeX preamble, columns,
+;;           latexpreview, numbered sections.
+;;   basic — every other org file under `erik/org-managed-roots'.
+;; Full back-fills headers into existing files (as before). Basic only
+;; fires on a brand-new empty file, so opening an old note or a repo's
+;; README.org never rewrites it.
+
+(defvar erik/org-managed-roots
+  (list erik/notes-directory
+        (expand-file-name "~/org/")
+        (expand-file-name "~/personal/"))
+  "Roots under which org files get automatic headers and lastmod stamps.")
+
+(defvar erik/org-unmanaged-files
+  (mapcar (lambda (f) (expand-file-name f org-directory))
+          '("elfeed.org" "papers.org"))
+  "Files owned by other tooling; never given a header or a stamp.")
 
 (defun erik/org--managed-file-p ()
-  "Non-nil if the current buffer is an org file under `erik/notes-directory'."
+  "Non-nil if the current buffer visits a managed org file."
+  (when-let* ((f (buffer-file-name))
+              (f (file-truename f)))
+    (and (not (cl-some (lambda (u) (string= f (file-truename u)))
+                       erik/org-unmanaged-files))
+         (cl-some (lambda (root) (file-in-directory-p f (file-truename root)))
+                  erik/org-managed-roots))))
+
+(defun erik/org--coursework-file-p ()
+  "Non-nil if this file gets the full (MFDS) header."
   (when-let ((f (buffer-file-name)))
-    (file-in-directory-p f erik/notes-directory)))
+    (file-in-directory-p (file-truename f)
+                         (file-truename erik/notes-directory))))
 
 (defun erik/org--title-from-filename ()
   "A pretty title derived from the buffer's filename."
@@ -206,13 +234,32 @@ Recomputed per call so a rename or a new course needs no config edit."
          (parts (split-string base "[-_ ]+")))
     (mapconcat #'capitalize parts " ")))
 
-(defun erik/org--header-string ()
+(defun erik/org--keyword-region-end ()
+  "Point at the end of the leading #+keyword block."
+  (save-excursion
+    (goto-char (point-min))
+    (while (and (not (eobp)) (looking-at "^\\(?:[ \t]*$\\|#\\+\\)"))
+      (forward-line 1))
+    (point)))
+
+;;; ---- header strings -------------------------------------------------
+
+(defun erik/org--header-common ()
   (concat
-   (format "#+title: %s\n" (erik/org--title-from-filename))
-   (format "#+author: %s\n" user-full-name)
-   (format "#+email: %s\n" user-mail-address)
-   (format "#+date: %s\n" (format-time-string "<%Y-%m-%d>"))
-   (format "#+lastmod: %s\n" (format-time-string "<%Y-%m-%d %H:%M>"))
+   (format "#+title: %s\n"    (erik/org--title-from-filename))
+   (format "#+author: %s\n"   user-full-name)
+   (format "#+email: %s\n"    user-mail-address)
+   (format "#+date: %s\n"     (format-time-string "<%Y-%m-%d>"))
+   (format "#+lastmod: %s\n"  (format-time-string "<%Y-%m-%d %H:%M>"))))
+
+(defun erik/org--header-basic ()
+  (concat (erik/org--header-common)
+          "#+options: toc:nil num:nil tags:nil\n"
+          "#+startup: overview inlineimages\n\n"))
+
+(defun erik/org--header-full ()
+  (concat
+   (erik/org--header-common)
    ;; paragraph spacing
    "#+latex: \\newpage\n"
    "#+latex_header: \\setlength{\\parindent}{0pt}\n"
@@ -230,16 +277,36 @@ Recomputed per call so a rename or a new course needs no config edit."
    "#+startup: overview latexpreview inlineimages\n"
    "#+columns: %50ITEM(Item) %8LECTURE_REF(Lecture) %34CUSTOM_ID(ID)\n\n"))
 
-(defun erik/org-insert-header-if-missing ()
-  "Insert the standard header into a managed org file that has no keywords yet.
-Checks for #+title as well, so a titled file never gets a duplicate."
-  (when (and (derived-mode-p 'org-mode)
-             (erik/org--managed-file-p))
+(defun erik/org--header-string ()
+  (if (erik/org--coursework-file-p)
+      (erik/org--header-full)
+    (erik/org--header-basic)))
+
+;;; ---- insertion ------------------------------------------------------
+
+(defun erik/org--header-missing-p ()
+  (save-excursion
+    (goto-char (point-min))
+    (let ((case-fold-search t))
+      (not (re-search-forward "^#\\+\\(title\\|author\\|email\\|date\\):"
+                              (erik/org--keyword-region-end) t)))))
+
+(defun erik/org-insert-header ()
+  "Insert this file's header profile, unless it already has one.
+Interactive escape hatch: works in any org buffer, managed or not."
+  (interactive)
+  (when (and (derived-mode-p 'org-mode) (erik/org--header-missing-p))
     (save-excursion
       (goto-char (point-min))
-      (let ((case-fold-search t))
-        (unless (re-search-forward "^#\\+\\(title\\|author\\|email\\|date\\):" 400 t)
-          (insert (erik/org--header-string)))))))
+      (insert (erik/org--header-string)))))
+
+(defun erik/org-insert-header-if-missing ()
+  "Hook: back-fill coursework files, stamp only *new* files elsewhere."
+  (when (and (derived-mode-p 'org-mode)
+             (erik/org--managed-file-p)
+             (or (erik/org--coursework-file-p)
+                 (zerop (buffer-size))))
+    (erik/org-insert-header)))
 
 (defun erik/org-update-lastmod-on-save ()
   "Refresh #+lastmod in managed org files."
@@ -247,19 +314,28 @@ Checks for #+title as well, so a titled file never gets a duplicate."
              (erik/org--managed-file-p))
     (save-excursion
       (goto-char (point-min))
-      (let ((ts (format-time-string "<%Y-%m-%d %H:%M>"))
+      (let ((ts    (format-time-string "<%Y-%m-%d %H:%M>"))
+            (limit (erik/org--keyword-region-end))
             (case-fold-search t))
-        (if (re-search-forward "^#\\+lastmod:.*$" nil t)
-            (replace-match (concat "#+lastmod: " ts))
+        (cond
+         ((re-search-forward "^#\\+lastmod:.*$" limit t)
+          (replace-match (concat "#+lastmod: " ts) t t))
+         ;; Only coursework files get a stamp grafted on after the fact;
+         ;; elsewhere, no stamp in the file means you didn't want one.
+         ((erik/org--coursework-file-p)
           (goto-char (point-min))
           (when (re-search-forward
-                 "^#\\+\\(title\\|author\\|email\\|date\\|options\\|startup\\):.*$" nil t)
+                 "^#\\+\\(title\\|author\\|email\\|date\\|options\\|startup\\):.*$"
+                 limit t)
             (beginning-of-line)
-            (while (and (not (eobp)) (looking-at "^#\\+")) (forward-line 1)))
-          (insert (concat "#+lastmod: " ts "\n")))))))
+            (while (and (not (eobp)) (looking-at "^#\\+")) (forward-line 1))
+            (insert (concat "#+lastmod: " ts "\n")))))))))
 
 (add-hook 'org-mode-hook    #'erik/org-insert-header-if-missing)
 (add-hook 'before-save-hook #'erik/org-update-lastmod-on-save)
+
+(map! :after org :map org-mode-map :localleader
+      "i h" #'erik/org-insert-header)
 
 ;;; ------------------------------------------------------------------
 ;;; lecture-note cross-reference tooling
@@ -480,3 +556,55 @@ its target."
       "i r" #'erik/org-insert-ref
       "i z" #'erik/org-refresh-ref-links
       "i c" #'erik/org-ref-cache-clear)
+
+;; elfeed for bci papers
+
+(after! elfeed
+  ;; Default view: unread, last month only. Old entries do not accumulate
+  ;; into a guilt pile — they scroll out of the filter and are gone.
+  (setq elfeed-search-filter "@1-month-ago +unread"
+        elfeed-search-title-max-width 110
+        elfeed-search-title-min-width 60
+        ;; Drop entries older than 3 months from the DB entirely.
+        elfeed-db-directory (expand-file-name "elfeed/" doom-cache-dir))
+
+  ;; Titles-only discipline: show feed tag + title, nothing else.
+  (setq elfeed-search-date-format '("%m-%d" 5 :left))
+
+  ;; Auto-mark the noisy feeds as read on arrival; you skim them by
+  ;; explicitly filtering, not by default.
+  (add-hook! 'elfeed-new-entry-hook
+    (elfeed-make-tagger :feed-url "arxiv\\.org"
+                        :entry-title '(not "\\(EEG\\|brain-computer\\|BCI\\|neural decod\\)")
+                        :add 'junk :remove 'unread)))
+
+(after! elfeed-org
+  (setq rmh-elfeed-org-files (list (expand-file-name "elfeed.org" org-directory))))
+
+;; Filter shortcuts. `gr` refetches, `r` marks read, `s` edits the filter.
+(map! :after elfeed
+      :map elfeed-search-mode-map
+      :n "B" (cmd! (elfeed-search-set-filter "@1-month-ago +unread +bci"))
+      :n "C" (cmd! (elfeed-search-set-filter "@3-months-ago +code"))
+      :n "A" (cmd! (elfeed-search-set-filter "@1-month-ago")))
+
+;; Capture: only fires when you'd actually cite the thing.
+(after! org-capture
+  (add-to-list 'org-capture-templates
+               '("p" "Paper (from elfeed)" entry
+                 (file+headline "~/org/papers.org" "Inbox")
+                 "* READ %:description\n:PROPERTIES:\n:URL: %:link\n:CAPTURED: %U\n:END:\n%?"
+                 :empty-lines 1)))
+
+(defun ea/elfeed-capture-paper ()
+  "Capture the entry at point to papers.org, mark it read, move on."
+  (interactive)
+  (let ((entry (or elfeed-show-entry (elfeed-search-selected :ignore-region))))
+    (org-store-link nil)
+    (let ((org-capture-link-is-already-stored t))
+      (org-capture nil "p"))
+    (when entry (elfeed-untag entry 'unread))))
+
+(map! :after elfeed
+      :map (elfeed-search-mode-map elfeed-show-mode-map)
+      :n "c" #'ea/elfeed-capture-paper)
