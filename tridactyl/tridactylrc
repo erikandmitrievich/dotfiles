@@ -1,0 +1,52 @@
+" Tridactyl config
+" Location: ~/.config/tridactyl/tridactylrc  (symlinked from dotfiles)
+" Tridactyl reads this file every time Firefox starts.
+" To re-apply it without restarting:  :source   (or ,r below)
+
+" ── 0. Reset ─────────────────────────────────────────────
+" Wipe every setting Tridactyl has stored inside Firefox, then apply this file.
+" Result: this file is the ONLY place your config lives.
+" Anything you set by typing (:set, :bind, M<key>) is lost at the next
+" restart unless you also write it here.
+sanitise tridactyllocal tridactylsync
+
+" ── 1. Behaviour ─────────────────────────────────────────
+" Keys work by physical position, so they still work with the Russian layout on.
+set keyboardlayoutforce true
+
+" Stop pages from putting the cursor into a text box when they load.
+" (Otherwise your keys type into that box instead of controlling Tridactyl.)
+set allowautofocus false
+
+" What :open / :tabopen search with when you type words instead of a URL.
+set searchengine duckduckgo
+
+" Needed so ",b" below doesn't auto-insert the first bookmark when you press space.
+# set completions.Bmark.autoselect false
+
+" ── 2. Appearance ────────────────────────────────────────
+" Placeholder. Will be replaced with a theme matched to your Emacs theme.
+colourscheme plaindark
+
+" ── 3. Write in Emacs (optional) ─────────────────────────
+" In any text box: press Ctrl-i, write in Emacs, save and close the frame,
+" and the text goes back into the box.
+" Needs a running Emacs server. Check the path with `which emacsclient`.
+set editorcmd /opt/homebrew/bin/emacsclient -c
+
+" ── 4. Common sites (quickmarks) ─────────────────────────
+" Format:   quickmark <key> <url> [<url> ...]
+" Open:     gn<key> new tab · go<key> current tab · gw<key> new window
+" One key can hold several URLs; it then opens all of them (a "folder").
+" Keys are single characters: a–z, A–Z, 0–9.
+"
+" (to be filled in once the site list is ready)
+
+" ── 5. Own keybindings ───────────────────────────────────
+" , is unused by Tridactyl's defaults, so it serves as a prefix for own binds.
+
+" Search all bookmarks, open the chosen one in a new tab.
+bind ,b fillcmdline bmarks -t
+
+" Re-apply this file.
+bind ,r source

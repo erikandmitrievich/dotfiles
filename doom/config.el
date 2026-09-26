@@ -16,12 +16,18 @@
 ;;; ui
 ;;; ------------------------------------------------------------------
 
-(setq doom-theme 'doom-one
+;; (setq doom-theme 'doom-one
+;;       display-line-numbers-type t)
+
+(setq doom-theme 'doom-plain-dark
       display-line-numbers-type t)
 
 ;;; ------------------------------------------------------------------
 ;;; paths
 ;;; ------------------------------------------------------------------
+
+(after! org
+  (setq org-link-file-path-type 'relative))
 
 (setq org-directory "~/org/")
 
@@ -85,6 +91,11 @@ Recomputed per call so a rename or a new course needs no config edit."
           :stream t
           :models '(claude-opus-5 claude-sonnet-5 claude-haiku-4-5-20251001)))
 
+  (gptel-make-anthropic "Claude-digest"
+    :key (lambda () (password-store-get "anthropic/api-key-digest"))
+    :stream nil
+    :models '(claude-haiku-4-5-20251001))
+
   (setq erik/gptel-ollama
         (gptel-make-ollama "Ollama"
           :host "localhost:11434"
@@ -127,6 +138,12 @@ Recomputed per call so a rename or a new course needs no config edit."
 ;;; ------------------------------------------------------------------
 ;;; latex / cdlatex
 ;;; ------------------------------------------------------------------
+
+(after! org
+  (setq org-preview-latex-default-process 'dvisvgm)
+  (plist-put org-format-latex-options :scale 1.8)
+  (plist-put org-format-latex-options :foreground 'default)
+  (plist-put org-format-latex-options :background 'default))
 
 (after! cdlatex
   ;; This is the *user* list; it is consed ahead of
@@ -608,3 +625,10 @@ its target."
 (map! :after elfeed
       :map (elfeed-search-mode-map elfeed-show-mode-map)
       :n "c" #'ea/elfeed-capture-paper)
+
+(after! elfeed
+  (add-hook 'elfeed-new-entry-hook
+            (elfeed-make-tagger :entry-title "newsletter:\\|^Cartoon:"
+                                :remove '(unread news))))
+
+(load! "news-digest")

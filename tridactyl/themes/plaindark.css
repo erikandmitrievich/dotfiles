@@ -1,0 +1,51 @@
+/* Tridactyl theme matching Doom Emacs `doom-plain-dark`.
+ * Location: ~/.config/tridactyl/themes/plaindark.css
+ * Load with:  colourscheme plaindark   (in tridactylrc)
+ *
+ * doom-plain-dark palette used here:
+ *   bg        #222222   editor background
+ *   mode-line #393939   (bg-alt darkened 15%)
+ *   base3     #444444   borders, line numbers
+ *   base0     #838083   strings, constants
+ *   highlight #bbbbbb   (base2)
+ *   fg        #d7d5d1   text
+ *   fg-alt    #e7e5e3   brighter text
+ */
+
+:root {
+    /* Page / completion list */
+    --tridactyl-bg: #222222;
+    --tridactyl-fg: #d7d5d1;
+    --tridactyl-scrollbar-color: #444444 #222222;
+
+    /* Command line (the input row at the bottom) — like the Emacs mode-line */
+    --tridactyl-cmdl-bg: #393939;
+    --tridactyl-cmdl-fg: #e7e5e3;
+
+    /* Section headers in the completion list ("Bookmarks", "History", …) */
+    --tridactyl-header-first-bg: #444444;
+    --tridactyl-header-second-bg: #393939;
+    --tridactyl-header-third-bg: #222222;
+    --tridactyl-cmplt-border-top: 1px solid #444444;
+
+    /* URLs in the completion list — same grey as strings in Emacs */
+    --tridactyl-url-fg: #838083;
+    --tridactyl-url-bg: #222222;
+
+    /* Selected completion row — inverted, like the Emacs highlight */
+    --tridactyl-of-fg: #222222;
+    --tridactyl-of-bg: #bbbbbb;
+
+    /* Hint labels (f / F) — readable on both light and dark pages */
+    --tridactyl-hintspan-fg: #222222;
+    --tridactyl-hintspan-bg: #bbbbbb;
+    --tridactyl-hint-bg: #393939;
+    --tridactyl-hint-outline: 1px solid #838083;
+    --tridactyl-hint-active-fg: #222222;
+    --tridactyl-hint-active-bg: #e7e5e3;
+    --tridactyl-hint-active-outline: 1px solid #222222;
+
+    /* Highlight boxes */
+    --tridactyl-highlight-box-bg: #444444;
+    --tridactyl-highlight-box-fg: #e7e5e3;
+}
