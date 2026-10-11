@@ -16,11 +16,11 @@
 ;;; ui
 ;;; ------------------------------------------------------------------
 
-;; (setq doom-theme 'doom-one
-;;       display-line-numbers-type t)
-
-(setq doom-theme 'doom-plain-dark
+(setq doom-theme 'doom-one
       display-line-numbers-type t)
+
+;; (setq doom-theme 'doom-plain-dark
+;;       display-line-numbers-type t)
 
 ;;; ------------------------------------------------------------------
 ;;; paths
@@ -146,17 +146,30 @@ Recomputed per call so a rename or a new course needs no config edit."
   (plist-put org-format-latex-options :background 'default))
 
 (after! cdlatex
-  ;; This is the *user* list; it is consed ahead of
-  ;; `cdlatex-math-symbol-alist-default', so these win over the defaults.
+  ;; ` + key : one finished symbol. A row here REPLACES the default row.
+  ;; The first press gives the spelling from math_notation.org, section 3.
   (setq cdlatex-math-symbol-alist
-        '((?b ("\\beta" "\\boxplus" "\\boxtimes"))
-          (?a ("\\alpha" "\\begin{align*}\n\n\\end{align*}"))
-          (?i ("\\in" "\\implies"))
-          (?R ("\\mathbb{R}"))
-          (?m ("\\mu" "\\mathbb{}"))
-          (?t ("\\tau" "\\text{}"))))
-  ;; force the combined cache to rebuild
-  (setq cdlatex-math-symbol-alist-comb nil))
+        '((?e  ("\\varepsilon" "\\epsilon" "\\exp"))
+          (?f  ("\\varphi" "\\phi"))
+          (?>  ("\\to" "\\longrightarrow" "\\max"))
+          (?\] ("\\implies" "\\Longrightarrow"))
+          (?=  ("\\iff" "\\Longleftrightarrow"))
+          (?{  ("\\subseteq" "\\subsetneq"))
+          (?}  ("\\supseteq" "\\supsetneq"))
+          (?i  ("\\in" "\\implies"))
+          (?R  ("\\mathbb{R}" "\\Re"))))
+  ;; X ' key : wrap X.   R'B -> \mathbb{R}
+  (setq cdlatex-math-modify-alist
+        '((?B "\\mathbb" nil t nil nil)))
+  ;; word TAB : template.  ? = where the cursor lands.
+  ;; Columns: word, help text, template, hook, args, works-in-text, works-in-math.
+  (setq cdlatex-command-alist
+        '(("dm"   "Insert \\[ \\]"              "\\[ ? \\]"                          cdlatex-position-cursor nil t nil)
+          ("op"   "Insert \\operatorname{}"     "\\operatorname{?}"                  cdlatex-position-cursor nil nil t)
+          ("case" "Insert cases on this line"   "\\begin{cases} ? \\end{cases}"      cdlatex-position-cursor nil nil t)
+          ("pmat" "Insert pmatrix on this line" "\\begin{pmatrix} ? \\end{pmatrix}"  cdlatex-position-cursor nil nil t)
+          ("bmat" "Insert bmatrix on this line" "\\begin{bmatrix} ? \\end{bmatrix}"  cdlatex-position-cursor nil nil t)
+          ("vmat" "Insert vmatrix on this line" "\\begin{vmatrix} ? \\end{vmatrix}"  cdlatex-position-cursor nil nil t))))
 
 ;;; ------------------------------------------------------------------
 ;;; quarto / pdf / pass
@@ -291,8 +304,78 @@ Recomputed per call so a rename or a new course needs no config edit."
    ;; view
    "#+options: num:t tags:nil\n"
    "#+property: header-args :eval never-export\n"
-   "#+startup: overview latexpreview inlineimages\n"
+   "#+startup: overview inlineimages\n"
    "#+columns: %50ITEM(Item) %8LECTURE_REF(Lecture) %34CUSTOM_ID(ID)\n\n"))
+
+;;; ---- lazy latex preview --------------------------------------------
+;; Replaces `#+startup: latexpreview'. On idle, previews only fragments that
+;; are on screen and unfolded; the fragment under point stays as source.
+;; Uses private `org--latex-preview-region' — delete once Org ships the
+;; new preview system.
+
+(defvar-local erik/org-lazy-latex--stopped nil
+  "Set after a render error; cleared on save.")
+
+(defun erik/org-lazy-latex--pending-p (beg end)
+  "Non-nil if BEG..END has a math delimiter not yet under a preview."
+  (save-excursion
+    (goto-char beg)
+    (cl-loop while (re-search-forward "\\$\\|\\\\[([]\\|\\\\begin{" end t)
+             thereis (not (eq (get-char-property (match-beginning 0)
+                                                 'org-overlay-type)
+                              'org-latex-overlay)))))
+
+(defun erik/org-lazy-latex--render (beg end skip)
+  "Preview BEG..END, leaving the span SKIP (BEG . END) alone."
+  (dolist (r (if (and skip (< (car skip) end) (> (cdr skip) beg))
+                 (list (cons beg (car skip)) (cons (cdr skip) end))
+               (list (cons beg end))))
+    (when (and (< (car r) (cdr r))
+               (erik/org-lazy-latex--pending-p (car r) (cdr r)))
+      (org--latex-preview-region (car r) (cdr r)))))
+
+(defun erik/org-lazy-latex--tick ()
+  (when (and (bound-and-true-p erik/org-lazy-latex-mode)
+             (not erik/org-lazy-latex--stopped)
+             (eq (current-buffer) (window-buffer))
+             (display-graphic-p))
+    (let* ((ctx  (org-element-context))
+           (skip (and (memq (org-element-type ctx)
+                            '(latex-fragment latex-environment))
+                      (cons (org-element-property :begin ctx)
+                            (org-element-property :end ctx))))
+           (pos  (window-start))
+           (end  (window-end nil t)))
+      (condition-case err
+          (while (< pos end)
+            (let ((next (next-single-char-property-change pos 'invisible nil end)))
+              (unless (invisible-p pos)
+                (erik/org-lazy-latex--render pos next skip))
+              (setq pos next)))
+        (error
+         (setq erik/org-lazy-latex--stopped t)
+         (message "Lazy LaTeX preview paused (%s); save to resume"
+                  (error-message-string err)))))))
+
+(defun erik/org-lazy-latex--resume ()
+  (setq erik/org-lazy-latex--stopped nil))
+
+(define-minor-mode erik/org-lazy-latex-mode
+  "Preview LaTeX fragments as they come on screen."
+  :lighter nil
+  (erik/org-lazy-latex--resume)
+  (if erik/org-lazy-latex-mode
+      (add-hook 'after-save-hook #'erik/org-lazy-latex--resume nil t)
+    (remove-hook 'after-save-hook #'erik/org-lazy-latex--resume t)))
+
+(defvar erik/org-lazy-latex--timer
+  (run-with-idle-timer 0.4 t #'erik/org-lazy-latex--tick))
+
+(defun erik/org-lazy-latex-maybe-h ()
+  (when (erik/org--coursework-file-p)
+    (erik/org-lazy-latex-mode 1)))
+
+(add-hook 'org-mode-hook #'erik/org-lazy-latex-maybe-h)
 
 (defun erik/org--header-string ()
   (if (erik/org--coursework-file-p)
@@ -632,3 +715,7 @@ its target."
                                 :remove '(unread news))))
 
 (load! "news-digest")
+
+;; $DOOMDIR/config.el
+(after! git-commit
+  (setq git-commit-summary-max-length 72))

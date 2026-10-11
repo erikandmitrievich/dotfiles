@@ -50,3 +50,11 @@ bind ,b fillcmdline bmarks -t
 
 " Re-apply this file.
 bind ,r source
+
+" Tab switching like Doom: Ctrl-j = next tab (down), Ctrl-k = previous tab (up)
+bind <C-j> tabnext
+bind <C-k> tabprev
+
+" Remove the default J/K tab keys (reversed compared to Doom)
+unbind J
+unbind K
