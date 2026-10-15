@@ -89,7 +89,8 @@ Recomputed per call so a rename or a new course needs no config edit."
         (gptel-make-anthropic "Claude"
           :key (lambda () (password-store-get "anthropic/api-key-gptel"))
           :stream t
-          :models '(claude-opus-5 claude-sonnet-5 claude-haiku-4-5-20251001)))
+          :models '(claude-opus-5 claude-sonnet-5 claude-haiku-4-5-20251001
+                    claude-sonnet-4-5-20250929)))
 
   (gptel-make-anthropic "Claude-digest"
     :key (lambda () (password-store-get "anthropic/api-key-digest"))
@@ -265,9 +266,14 @@ Recomputed per call so a rename or a new course needs no config edit."
     (mapconcat #'capitalize parts " ")))
 
 (defun erik/org--keyword-region-end ()
-  "Point at the end of the leading #+keyword block."
+  "Point at the end of the leading #+keyword block.
+A file-level property drawer at the very top, such as the one gptel saves
+its state in, is skipped first."
   (save-excursion
     (goto-char (point-min))
+    (when (and (looking-at "[ \t]*:PROPERTIES:[ \t]*$")
+               (re-search-forward "^[ \t]*:END:[ \t]*$" nil t))
+      (forward-line 1))
     (while (and (not (eobp)) (looking-at "^\\(?:[ \t]*$\\|#\\+\\)"))
       (forward-line 1))
     (point)))
@@ -719,3 +725,9 @@ its target."
 ;; $DOOMDIR/config.el
 (after! git-commit
   (setq git-commit-summary-max-length 72))
+
+;; for mfds gptel
+(load! "mfds-gptel")
+(map! :map org-mode-map :localleader
+      "a" #'mfds-gptel-answer
+      "c" #'mfds-gptel-ps-chat)
